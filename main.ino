@@ -11,22 +11,18 @@
 #include <BlynkSimpleEsp32.h>
 #include <DHT.h>
 #include <Stepper.h>
-#include <PubSubClient.h> // <-- NEW: MQTT Library
+#include <PubSubClient.h>
 
 bool state = fechado;
 
-// 2. WIFI CREDENTIALS
 char auth[] = BLYNK_AUTH_TOKEN;
 char ssid[] = "";
 char pass[] = "";
 
-// --- NEW: MQTT SETTINGS ---
-const char* mqtt_server = "192.168.0.109"; // <-- IMPORTANT: Change this!
+const char* mqtt_server = "192.168.0.109";
 WiFiClient espClient;
 PubSubClient client(espClient);
-// --- END OF NEW MQTT SETTINGS ---
 
-// 3. HARDWARE SETTINGS
 #define DHTPIN 4
 #define DHTTYPE DHT11
 
@@ -36,53 +32,47 @@ Stepper myStepper(stepsPerRevolution, 19, 5, 18, 21);
 DHT dht(DHTPIN, DHTTYPE);
 BlynkTimer timer;
 
-// --- NEW: Function to reconnect to MQTT ---
 void reconnect_mqtt() {
   while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
+    Serial.print("Tentando conectar ao MQTT...");
     if (client.connect("esp32Client")) {
-      Serial.println("connected");
+      Serial.println("conectado");
     } else {
-      Serial.print("failed, rc=");
+      Serial.print("falhou, rc=");
       Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
+      Serial.println(" tentando novamente em 5 segundos");
       delay(5000);
     }
   }
 }
-// --- END OF NEW FUNCTION ---
 
 void myTimerEvent() {
   float t = dht.readTemperature();
 
   if (isnan(t)) {
-    Serial.println("Failed to read from DHT sensor!");
+    Serial.println("Falha ao ler o sensor DHT");
     return;
   }
 
-  // B. Send to Blynk (Virtual Pin V0)
   Blynk.virtualWrite(V0, t);
-  Serial.print("Temperature: ");
+  Serial.print("Temperatura: ");
   Serial.print(t);
-  Serial.println(" *C");
+  Serial.println(" °C");
 
-  // --- NEW: Publish to MQTT ---
   if (client.connected()) {
     char tempString[8];
-    dtostrf(t, 4, 2, tempString); // Convert float to string
+    dtostrf(t, 4, 2, tempString);
     client.publish("esp32/temperature", tempString);
-    Serial.print("Published to MQTT topic 'esp32/temperature': ");
+    Serial.print("Publicado no tópico MQTT 'esp32/temperature': ");
     Serial.println(tempString);
   }
-  // --- END OF NEW MQTT PUBLISH ---
 
-  // C. Motor Logic
   if (t > 27 && state == fechado) {
-    Serial.println("Abrindo a janela de ventilacao (temp > 27)");
+    Serial.println("Abrindo a janela de ventilacao");
     myStepper.step(stepsPerRevolution);
     state = aberto;
   } else if (t <= 27 && state == aberto) {
-    Serial.println("Fechando janela de ventilacao (temp <= 27)");
+    Serial.println("Fechando a janela de ventilacao");
     myStepper.step(-stepsPerRevolution);
     state = fechado;
   }
@@ -96,21 +86,17 @@ void setup() {
 
   Blynk.begin(auth, ssid, pass);
 
-  // --- NEW: Setup MQTT ---
-  client.setServer(mqtt_server, 1883); // Port 1883 is standard for MQTT
-  // --- END OF NEW MQTT SETUP ---
+  client.setServer(mqtt_server, 1883);
 
-  timer.setInterval(5000L, myTimerEvent); // Increased interval to 5 seconds for stability
+  timer.setInterval(5000L, myTimerEvent);
 }
 
 void loop() {
   Blynk.run();
   timer.run();
 
-  // --- NEW: MQTT Loop ---
   if (!client.connected()) {
     reconnect_mqtt();
   }
   client.loop();
-  // --- END OF NEW MQTT LOOP ---
 }
